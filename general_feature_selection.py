@@ -5,6 +5,7 @@ import operator
 import random
 import sys
 import math
+import os
 import numpy.linalg
 from optparse import OptionParser
 
@@ -26,7 +27,7 @@ def read_data(filename):
 def parse_features(curr_vector):
 	return [int(atts.split(":")[0]) for atts in curr_vector]
 
-def feature_selection(curr_vector, features_to_use):
+def make_feature_sets(curr_vector, features_to_use):
 	new_vector = []
 	for chunk in features_to_use:
 		bounds = chunk.split(':')
@@ -72,13 +73,14 @@ def make_label_lists(labels):
 def analyze_structure(data, curr_subset, label_list):
 	data = copy.deepcopy(data)
 	# create feature vector for curr_subset
+	#create dictionary for current test
+	info = {}
+	info['subset'] = curr_subset
 	for record in data:
-		record['feature_vector'] = feature_selection(record['feature_vector'], curr_subset)
+		record['feature_vector'] = make_feature_sets(record['feature_vector'], curr_subset)
 
 	reindexed, values = reindex(data)
-	splitlist = splitter(reindexed, label_list)
-	pos = splitlist[0]
-	neg = splitlist[1]
+	pos, neg = splitter(reindexed, label_list)
 	posmatrix = build_matrix(pos, values)
 	negmatrix = build_matrix(neg, values)
 	matrix = build_matrix(reindexed, values)
@@ -87,37 +89,25 @@ def analyze_structure(data, curr_subset, label_list):
 	uniqpos = column_totals(posmatrix, values)
 	uniqneg = column_totals(negmatrix, values)
 
-	# calculate the dimension of each polytope
-	# if zero vector is present, then dimension is equal to rank, otherwise it is equal to rank - 1
-	if zero_check(pos) == True:
-		dimpos = my_matrix_rank(posmatrix, values)
-	else:
-		dimpos = my_matrix_rank(posmatrix, values) - 1
-	if zero_check(neg) == True:
-		dimneg = my_matrix_rank(negmatrix, values)
-	else:
-		dimneg = my_matrix_rank(negmatrix, values) - 1
-	if zero_check(reindexed) == True:
-		dimfull = my_matrix_rank(matrix, values)
-	else:
-		dimfull = my_matrix_rank(matrix, values) - 1
+	# calculate polytope dimension
+	dimpos = get_poly_dim(posmatrix, values)
+	dimneg = get_poly_dim(negmatrix, values)
+	dimfull = get_poly_dim(matrix, values)
 
-	# create polytope features
-	f1 = float(dimpos)/uniqpos
-	f2 = float(dimneg)/uniqneg
-	f3 = float(dimpos)/len(values)
-	f4 = float(dimneg)/len(values)
-	f5 = float(dimfull)/len(values)
+	# create polytope features	
+	info['f1'] = float(dimpos)/uniqpos
+	info ['f2'] = float(dimneg)/uniqneg
+	info['f3'] = float(dimpos)/len(values)
+	info['f4'] = float(dimneg)/len(values)
+	info['f5'] = float(dimfull)/len(values)
 
 	# calculate affine overlap ratio
 	PsetminusQ = affine_hull_intersection(pos, neg, values)
 	QsetminusP = affine_hull_intersection(neg, pos, values)
 	overlap = len(reindexed) - PsetminusQ - QsetminusP
-	f6 = float(overlap)/len(reindexed)
+	info['f6'] = float(overlap)/len(reindexed)
 
-
-	output = [f1,f2,f3,f4,f5,f6,curr_subset]
-	return output
+	return info
 
 # determines ambient dimension
 def column_totals(matrix, values):
@@ -128,6 +118,15 @@ def column_totals(matrix, values):
 			count +=1
 	return count
 
+# calculate the affine dimension of each polytope
+# if zero vector is present, then dimension is equal to rank, otherwise it is equal to rank - 1
+def get_poly_dim(mat, values):
+	if zero_vector_present(mat):
+		dim = my_matrix_rank(mat, values)
+	else:
+		dim = my_matrix_rank(mat, values) - 1
+	return dim
+	
 # reindex features to avoid large spaces of zeros
 def reindex(data):
 	# order present values from least to greatest
@@ -139,17 +138,19 @@ def reindex(data):
 	unique = set(vals)
 	values = list(unique)
 	values.sort()
+	
+	# create a dictionary for efficient mapping
+	new_index = {}
+	for i, v in enumerate(values):
+		new_index[v] = i
 
 	# rename each unique feature value as its index
 	new_data = []
 	for record in data:
 		new_record = copy.deepcopy(record)
 		new_vector = []
-		curr_vector = record['feature_vector']
-		for item in curr_vector:
-			for i, idx in enumerate(values):
-				if item == idx:
-					new_vector.append(i)
+		for item in record['feature_vector']:
+			new_vector.append(new_index[item])
 		new_record['feature_vector'] = new_vector
 		new_data.append(new_record)
 	return new_data, values
@@ -163,10 +164,7 @@ def splitter(data, split_vals):
 			list1.append(record)
 		else:
 			list2.append(record)
-	lists = {}
-	lists[0] = list1
-	lists[1] = list2
-	return lists
+	return list1, list2
 
 # takes list of feature indices and returns a numpy matrix
 def build_matrix(examples, values):
@@ -182,51 +180,51 @@ def build_matrix(examples, values):
 	return z
 
 # check for presence of zero vector
-def zero_check(records):
-	for record in records:
-		if not record['feature_vector']:
+def zero_vector_present(mat):
+	for row in mat:
+		z = row.sum()
+		if z == 0:
 			return True
 	return False
 
 # determines the overlap of the class represented polytopes
-def affine_hull_intersection(examples1,examples2, values):
+def affine_hull_intersection(examples1, examples2, values):
 	setminus = 0
 	num_features = len(values)		
-	poly1 = build_matrix(examples1,values)
-	poly2 = build_matrix(examples2,values)
-
-	if zero_check(examples1) == True: # dimension = rank if zero vector present
-		dimpoly1 = my_matrix_rank(poly1, values) 
+	poly1 = build_matrix(examples1, values)
+	poly2 = build_matrix(examples2, values)
+	dimpoly1 = get_poly_dim(poly1, values)
+	
+	if zero_vector_present(poly1): 
 		for record in examples2:
 			if not record['feature_vector']: # already know poly1 contains the origin
 				continue
-			else: # determines whether a new point from poly2 is within the the affine hull of poly1
-				features = record['feature_vector']
-				vector = [0 for i in xrange(num_features)]
-				for val in features:
-					vector[int(val)] = 1
-				new_matrix = numpy.vstack((poly1,vector))
-				dimnew = my_matrix_rank(new_matrix, values)
-				if dimnew > dimpoly1: # count the points that belong to poly2, but not poly1
+			else: 
+				if dimension_increase(record, num_features, values, poly1, dimpoly1):
 					setminus +=1
 
-	elif zero_check(examples1) == False:
-		dimpoly1 = my_matrix_rank(poly1, values) - 1
+	else:
 		for record in examples2:
 			if not record['feature_vector']: #already know poly1 does not contain origin
 				setminus +=1
 			else:
-				features = record['feature_vector']
-				vector = [0 for i in xrange(num_features)]
-				for val in features:
-					vector[int(val)] = 1
-				new_matrix = numpy.vstack((poly1,vector))
-				dimnew = my_matrix_rank(new_matrix, values) - 1
-				if dimnew > dimpoly1:
+				if dimension_increase(record, num_features, values, poly1, dimpoly1):
 					setminus +=1
 
 	return setminus
 
+# adds a point from poly2 to poly1
+# an increase in dimension indicates point does not lie in affine hull of poly1
+def dimension_increase(record, num_features, values, poly1, dimpoly1):	
+	vector = numpy.zeros(num_features)
+	vector[record['feature_vector']] = 1
+	new_matrix = numpy.vstack((poly1, vector))
+	dimnew = get_poly_dim(new_matrix, values)
+	if dimnew > dimpoly1:
+		return True
+	else:
+		return False
+	
 # this function makes up for buggy SVD function from the linalg library. It offers a conservative estimate 
 # for rank (eps=1e-6), and returns the largest possible value for rank if SVD does not converge.
 def my_matrix_rank(A, values,  eps=1e-6):
@@ -238,33 +236,30 @@ def my_matrix_rank(A, values,  eps=1e-6):
 		return column_totals(A, values) 
 
 
-def generate_filenames(label_lists):
+def generate_filenames(dir_name, label_lists):
 	names = []
+	if not os.path.exists(dir_name):
+	    os.makedirs(dir_name)
 	for i in xrange(1, len(label_lists)+1):
-		curr_name = 'classifier%d.csv'%i
+		curr_name = '%s/classifier_%d.csv' % (dir_name, i)
 		names.append(curr_name)
 	return names
 	
 def predict(data):	
-	def normalize(data):
-		# normalize values
-		types = ['f1', 'f2', 'f3', 'f4', 'f5', 'f6']
-		for idx in types:
+	def standardize(data, idx):
 			vals = []
 			for record in data:
 				vals.append(float(record[idx]))
 			mean = numpy.mean(vals)
-			sd  = numpy.std(vals, ddof = 1)
-			# avoid division by zero if all values are the same
-			if sd == 0: 
+			sd = numpy.std(vals, ddof = 1)
+			if sd == 0: # avoid division by zero if all values are the same, effectively removing the feature from consideration by the model
 				sd = 1
-
 			for record in data:
-				new_val = (float(record[idx]) - mean)  / (sd*sd)
+				new_val = (float(record[idx]) - mean)  / (sd * sd)
 				record[idx] = new_val
 
 	def lin_predict(record):
-		j = numpy.matrix([-1.039011e-12, -9.114375e-01, -1.223389e-01, -2.006449e-01])
+		j = numpy.matrix([-1.039011e-12, -9.114375e-01, -1.223389e-01, -2.006449e-01]) # coefficients of optimal linear model
 		feats = ['f3', 'f4', 'f5']
 		t = [1]
 		for idx in feats:
@@ -278,8 +273,8 @@ def predict(data):
 		return record
 
 	def log_predict(record):
-		b = numpy.matrix([-0.64063267,   0.15706603,   0.13272974,  -0.03350878,  -0.15182902,  -0.19548473,  -0.68787718 ])
-		feats = ['f1','f2','f3','f4','f5','f6']
+		b = numpy.matrix([-0.64063267,   0.15706603,   0.13272974,  -0.03350878,  -0.15182902,  -0.19548473,  -0.68787718 ]) # coefficients of optimal logistic regression model
+		feats = ['f1', 'f2', 'f3', 'f4', 'f5', 'f6']
 		Q = [1]
 		for idx in feats:
 			val = float(record[idx])
@@ -301,7 +296,8 @@ def predict(data):
 		record['pred'] = pred
 		return record
 
-	normalize(data)
+	for idx in ['f1', 'f2', 'f3', 'f4', 'f5', 'f6']:
+		standardize(data, idx)
 	for record in data:
 		lin_predict(record)
 	for record in data:
@@ -314,7 +310,7 @@ def predict(data):
 
 # argument is a text file with labeled training examples in sparse vector format
 # file needs to be formatted as follows:  label' 'feature#:1' 'feature#:1' '...
-def main(filename, feature_groups, class_labels):
+def main(filename, feature_groups, class_labels, dir_name):
 	data = read_data(filename)
 	random.shuffle(data)
 	features = feature_groups.split(',')
@@ -322,49 +318,41 @@ def main(filename, feature_groups, class_labels):
 	subsets = make_subsets(features)
 	subsets = subsets[1:] # do not generate structures for the empty set
 	label_lists = make_label_lists(labels)
-	label_lists = label_lists[1:]
-	text_names = generate_filenames(label_lists)
-	for j,label_list in enumerate(label_lists):
+	label_lists = label_lists[1:] # first label list is empty
+	text_names = generate_filenames(dir_name, label_lists)
+	for j, label_list in enumerate(label_lists):
 		print "working on ", j+1, " of ", len(label_lists), " binary classifiers"
 		structures = []
 		for i, x in enumerate(subsets):
+			if i > 2:
+				break
 			print 'analyzing structure for ', i+1, " of ", len(subsets), ' feature sets.'
-			structure = analyze_structure(data, x, label_list) # list of 6 values and subset
-			structures.append(structure) # list of lists
-		
-		# make subset stats into dictionaries
-		structs = [] 	
-		for struct in structures:
-			info = {}
-			info['f1'] = struct[0]
-			info ['f2'] = struct[1]
-			info['f3'] = struct[2]
-			info['f4'] = struct[3]
-			info['f5'] = struct[4]
-			info['f6'] = struct[5]
-			info['subset'] = struct[6]
-			structs.append(info)	
+			structure = analyze_structure(data, x, label_list) # dictionary with six keys
+			structures.append(structure) # list of dictionaries
 		
 		# determine good feature sets
-		good_sets = predict(structs)
+		good_sets = predict(structures)
 			
 		# write results to file
 		txt = text_names[j]
 		print 'writing results from label ', label_list
-		w = csv.writer(open(txt, 'w'), dialect = 'excel')
-		w.writerow(label_list)
-		w.writerow(['Features_Included'])
-		for record in good_sets:
-			output = [record['subset']]
-			w.writerow(output)
+		w = open(txt, 'w')
+		w.write(str(label_list) + "\n")
+		w.write("Features_Included\n")
+		if not good_sets:
+			w.write("this classifier does not produce good results")
+		else:
+			for record in good_sets:
+				w.write(str(record["subset"]) + "\n")
 
 if __name__=='__main__':
 	parser = OptionParser()
 	parser.add_option('-f', '--filename')
 	parser.add_option('-t', '--feature_groups', help = 'for example 1:28,29:40 will make two feature groups 1-28 and 29-40')
 	parser.add_option('-l', '--class_labels', help = 'enter class types separated by commas')
+	parser.add_option('-d', '--directory_name', help = 'create directory for output files')
 	options, args = parser.parse_args()
-	main(options.filename, options.feature_groups, options.class_labels)
+	main(options.filename, options.feature_groups, options.class_labels, options.directory_name)
 	
 	
 	
