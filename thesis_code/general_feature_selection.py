@@ -1,3 +1,7 @@
+# Given a training set, this program predicts which subsets of features will give optimal performance
+# It does so by generating structural information about each subset of features
+# and applying logistic and linear regression models
+
 import copy
 import csv
 import numpy
@@ -9,6 +13,7 @@ import os
 import numpy.linalg
 from optparse import OptionParser
 
+# reads in data from the training set provided by user
 def read_data(filename):
 	dicts = []
 	for line in open(filename):
@@ -24,10 +29,12 @@ def read_data(filename):
 
 	return dicts
 
+# converts sparse vector format to list of present features
 def parse_features(curr_vector):
 	return [int(atts.split(":")[0]) for atts in curr_vector]
 
-def make_feature_sets(curr_vector, features_to_use):
+# returns a vector only containing features within the current subset being analyzed
+def make_feature_set(curr_vector, features_to_use):
 	new_vector = []
 	for chunk in features_to_use:
 		bounds = chunk.split(':')
@@ -51,6 +58,7 @@ def make_subsets(features):
 		r.append(t.union(set([x])))
 	return r
 
+# generates a list of all unique binary classifiers
 def make_label_lists(labels):
 	unique_set = []
 	rv =[]
@@ -77,7 +85,7 @@ def analyze_structure(data, curr_subset, label_list):
 	info = {}
 	info['subset'] = curr_subset
 	for record in data:
-		record['feature_vector'] = make_feature_sets(record['feature_vector'], curr_subset)
+		record['feature_vector'] = make_feature_set(record['feature_vector'], curr_subset)
 
 	reindexed, values = reindex(data)
 	pos, neg = splitter(reindexed, label_list)
@@ -200,7 +208,7 @@ def affine_hull_intersection(examples1, examples2, values):
 			if not record['feature_vector']: # already know poly1 contains the origin
 				continue
 			else: 
-				if dimension_increase(record, num_features, values, poly1, dimpoly1):
+				if dimension_increase_check(record, num_features, values, poly1, dimpoly1):
 					setminus +=1
 
 	else:
@@ -208,14 +216,14 @@ def affine_hull_intersection(examples1, examples2, values):
 			if not record['feature_vector']: #already know poly1 does not contain origin
 				setminus +=1
 			else:
-				if dimension_increase(record, num_features, values, poly1, dimpoly1):
+				if dimension_increase_check(record, num_features, values, poly1, dimpoly1):
 					setminus +=1
 
 	return setminus
 
 # adds a point from poly2 to poly1
 # an increase in dimension indicates point does not lie in affine hull of poly1
-def dimension_increase(record, num_features, values, poly1, dimpoly1):	
+def dimension_increase_check(record, num_features, values, poly1, dimpoly1):	
 	vector = numpy.zeros(num_features)
 	vector[record['feature_vector']] = 1
 	new_matrix = numpy.vstack((poly1, vector))
@@ -235,7 +243,7 @@ def my_matrix_rank(A, values,  eps=1e-6):
 		print "SVD did not converge...making a conservative estimate for rank"
 		return column_totals(A, values) 
 
-
+# generates the output file names inside the user provided directory
 def generate_filenames(dir_name, label_lists):
 	names = []
 	if not os.path.exists(dir_name):
@@ -245,7 +253,10 @@ def generate_filenames(dir_name, label_lists):
 		names.append(curr_name)
 	return names
 	
-def predict(data):	
+# uses the logistic and linear regression models to predict whether a subset is optimal
+def predict(data):
+	
+	# convert f1-f6 into z-scores	
 	def standardize(data, idx):
 			vals = []
 			for record in data:
@@ -257,7 +268,8 @@ def predict(data):
 			for record in data:
 				new_val = (float(record[idx]) - mean)  / (sd * sd)
 				record[idx] = new_val
-
+	
+	# linear regression model
 	def lin_predict(record):
 		j = numpy.matrix([-1.039011e-12, -9.114375e-01, -1.223389e-01, -2.006449e-01]) # coefficients of optimal linear model
 		feats = ['f3', 'f4', 'f5']
@@ -271,7 +283,8 @@ def predict(data):
 		lin_pred = j * t
 		record['lin_pred'] = lin_pred
 		return record
-
+		
+	# logistic regression model
 	def log_predict(record):
 		b = numpy.matrix([-0.64063267,   0.15706603,   0.13272974,  -0.03350878,  -0.15182902,  -0.19548473,  -0.68787718 ]) # coefficients of optimal logistic regression model
 		feats = ['f1', 'f2', 'f3', 'f4', 'f5', 'f6']
@@ -289,7 +302,7 @@ def predict(data):
 			init_pred = 1
 		else:
 			init_pred = 0
-		if record['lin_pred'] > 0 and init_pred == 1:
+		if record['lin_pred'] > 0 and init_pred == 1: # requires both models to agree before assigning a prediction of optimal
 			pred = 1
 		else:
 			pred = -1
@@ -302,7 +315,7 @@ def predict(data):
 		lin_predict(record)
 	for record in data:
 		log_predict(record)
-	good_sets = []
+	good_sets = [] # a list of the predicted optimal sets
 	for record in data:
 		if record['pred'] == 1:
 			good_sets.append(record)
@@ -324,8 +337,6 @@ def main(filename, feature_groups, class_labels, dir_name):
 		print "working on ", j+1, " of ", len(label_lists), " binary classifiers"
 		structures = []
 		for i, x in enumerate(subsets):
-			if i > 2:
-				break
 			print 'analyzing structure for ', i+1, " of ", len(subsets), ' feature sets.'
 			structure = analyze_structure(data, x, label_list) # dictionary with six keys
 			structures.append(structure) # list of dictionaries
