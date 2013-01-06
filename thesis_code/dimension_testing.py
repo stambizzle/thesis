@@ -129,12 +129,12 @@ def main(filename):
 	
 	# read in test dimensions from file containing lists of strings indicating feature type boundaries
 	tests = []
-	for line in open("amazon2_tests.txt"):
+	for line in open("amazon_reduced_tests.txt"):
 		tests.append(eval(line.strip()))
 	tests = tests[1:]
 	
 	# set up output file
-	file1 = open('dimension_testing2_results.csv','w')
+	file1 = open('dimension_testing_reduced_results.csv','w')
 	w = csv.writer(file1, dialect = 'excel')
 	w.writerow(["Column Dimension", "Accuracy", "Precision", "Recall", "CPU Time"])
 	
@@ -146,7 +146,7 @@ def main(filename):
 		
 		# generate neccessary parameters for test
 		subsets = generate_training_data.make_subsets(test)
-		label_lists = generate_training_data.make_label_lists(["Grove", "Riley", "Comdet", "Vernon","Janson"])
+		label_lists = generate_training_data.make_label_lists(['Cutey','Bukowsky','McKee','Power','Chandler'])
 		label_lists = label_lists[1:]
 		
 		# tailor original data set to only include dimensions of test
@@ -193,5 +193,5 @@ def main(filename):
 		w.writerow(output)
 		file1.flush()
 	
-main("/Users/carlystambaugh/Desktop/vector_text_files/dimension_testing2_vectors.txt")
+main("amazon_reduced_vectors.txt")
 			

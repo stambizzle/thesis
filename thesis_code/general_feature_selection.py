@@ -129,10 +129,12 @@ def column_totals(matrix, values):
 # calculate the affine dimension of each polytope
 # if zero vector is present, then dimension is equal to rank, otherwise it is equal to rank - 1
 def get_poly_dim(mat, values):
-	if zero_vector_present(mat):
-		dim = my_matrix_rank(mat, values)
-	else:
-		dim = my_matrix_rank(mat, values) - 1
+	m = numpy.transpose(mat)
+	d = m[-1]
+	k = m[:-1]
+	g = k-d
+	mat = numpy.transpose(g)
+	dim = my_matrix_rank(mat, values)
 	return dim
 	
 # reindex features to avoid large spaces of zeros
@@ -187,13 +189,6 @@ def build_matrix(examples, values):
 	z = numpy.matrix(vectors)
 	return z
 
-# check for presence of zero vector
-def zero_vector_present(mat):
-	for row in mat:
-		z = row.sum()
-		if z == 0:
-			return True
-	return False
 
 # determines the overlap of the class represented polytopes
 def affine_hull_intersection(examples1, examples2, values):
