@@ -1,0 +1,40 @@
+
+
+#general_feature_selection.py
+
+##About
+
+This is a feature selection  algorithm for linear SVMs. It examines the geometric structures of every possible feature set and predicts whether the feature set will be optimal or suboptimal based on these observations.
+
+The six properties that the algorithm calcuates and the regression models used to make predictions are the result of my master's thesis work in the Mathematics Department at San Francisco State University. 
+
+##Input
+
+The program takes 4 command line arguments:
+	'-f', '--filename': a text file containing the training examples for your classification problem. These should be formatted according the guidelines for SVMLight.
+	'-t', '--feature_groups': boundaries for the feature groups you wish to examine, formatted  as follows:
+	 1:28,29:40 (this will make two feature groups, using columns 1-28 and 29-40).
+	'-l', '--class_labels': the labels asssociated with your classification problem, separated by commas,
+	'-d', '--directory_name': create directory for output files 
+	
+##Output
+
+The algorithm outputs a list of suggested optimal feature set. Since an optimal feature set need not be unique, you can choose the one that best fits your particular needs.
+
+#generate_training_data.py
+
+##About
+
+This program was used to generate the training data for the regression models used in the feature selection algorithm.
+
+#movies_program.py
+
+##About
+
+This program creates a sample text classification data set using the movies corpus that accompanies nltk.
+
+#dimension_testing.py
+
+##About
+
+This program was used to evaluate the algorithm's performance over input data sets of various dimensions.
