@@ -129,12 +129,10 @@ def column_totals(matrix, values):
 # calculate the affine dimension of each polytope
 # if zero vector is present, then dimension is equal to rank, otherwise it is equal to rank - 1
 def get_poly_dim(mat, values):
-	m = numpy.transpose(mat)
-	d = m[-1]
-	k = m[:-1]
+	d = mat[-1]
+	k = mat[:-1]
 	g = k-d
-	mat = numpy.transpose(g)
-	dim = my_matrix_rank(mat, values)
+	dim = my_matrix_rank(g, values)
 	return dim
 	
 # reindex features to avoid large spaces of zeros
