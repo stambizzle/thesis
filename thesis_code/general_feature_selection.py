@@ -94,13 +94,13 @@ def analyze_structure(data, curr_subset, label_list):
 	matrix = build_matrix(reindexed, values)
 
 	# identify number of unique values in each class
-	uniqpos = column_totals(posmatrix, values)
-	uniqneg = column_totals(negmatrix, values)
+	uniqpos = column_totals(posmatrix)
+	uniqneg = column_totals(negmatrix)
 
 	# calculate polytope dimension
-	dimpos = get_poly_dim(posmatrix, values)
-	dimneg = get_poly_dim(negmatrix, values)
-	dimfull = get_poly_dim(matrix, values)
+	dimpos = get_poly_dim(posmatrix)
+	dimneg = get_poly_dim(negmatrix)
+	dimfull = get_poly_dim(matrix)
 
 	# create polytope features	
 	info['f1'] = float(dimpos)/uniqpos
@@ -110,31 +110,32 @@ def analyze_structure(data, curr_subset, label_list):
 	info['f5'] = float(dimfull)/len(values)
 
 	# calculate affine overlap ratio
-	PsetminusQ = affine_hull_intersection(pos, neg, values)
-	QsetminusP = affine_hull_intersection(neg, pos, values)
+	PsetminusQ = affine_hull_intersection(posmatrix, neg)
+	QsetminusP = affine_hull_intersection(negmatrix, pos)
 	overlap = len(reindexed) - PsetminusQ - QsetminusP
 	info['f6'] = float(overlap)/len(reindexed)
 
 	return info
 
 # determines ambient dimension
-def column_totals(matrix, values):
+def column_totals(matrix):
 	count = 0
-	for i in xrange(len(values)):
+	a,b = numpy.shape(matrix)
+	for i in xrange(0,b):
 		z = matrix[:,i].sum()
 		if z > 0:
 			count +=1
 	return count
 
 # calculate the affine dimension of each polytope
-# if zero vector is present, then dimension is equal to rank, otherwise it is equal to rank - 1
-def get_poly_dim(mat, values):
+def get_poly_dim(mat):
 	d = mat[-1]
 	k = mat[:-1]
 	g = k-d
-	dim = my_matrix_rank(g, values)
+	dim = my_matrix_rank(g)
 	return dim
-	
+
+
 # reindex features to avoid large spaces of zeros
 def reindex(data):
 	# order present values from least to greatest
@@ -189,52 +190,37 @@ def build_matrix(examples, values):
 
 
 # determines the overlap of the class represented polytopes
-def affine_hull_intersection(examples1, examples2, values):
-	setminus = 0
-	num_features = len(values)		
-	poly1 = build_matrix(examples1, values)
-	poly2 = build_matrix(examples2, values)
-	dimpoly1 = get_poly_dim(poly1, values)
-	
-	if zero_vector_present(poly1): 
-		for record in examples2:
-			if not record['feature_vector']: # already know poly1 contains the origin
-				continue
-			else: 
-				if dimension_increase_check(record, num_features, values, poly1, dimpoly1):
-					setminus +=1
-
-	else:
-		for record in examples2:
-			if not record['feature_vector']: #already know poly1 does not contain origin
-				setminus +=1
-			else:
-				if dimension_increase_check(record, num_features, values, poly1, dimpoly1):
-					setminus +=1
+def affine_hull_intersection(poly1, examples2):
+	setminus = 0			
+	for record in examples2:
+		if dimension_increase_check(record, poly1):
+			setminus +=1
 
 	return setminus
 
 # adds a point from poly2 to poly1
 # an increase in dimension indicates point does not lie in affine hull of poly1
-def dimension_increase_check(record, num_features, values, poly1, dimpoly1):	
-	vector = numpy.zeros(num_features)
+def dimension_increase_check(record, poly1):	
+	a, b = poly1.shape
+	vector = numpy.zeros(b)
 	vector[record['feature_vector']] = 1
 	new_matrix = numpy.vstack((poly1, vector))
-	dimnew = get_poly_dim(new_matrix, values)
-	if dimnew > dimpoly1:
+	if get_poly_dim(new_matrix) > get_poly_dim(poly1):
 		return True
 	else:
 		return False
 	
 # this function makes up for buggy SVD function from the linalg library. It offers a conservative estimate 
 # for rank (eps=1e-6), and returns the largest possible value for rank if SVD does not converge.
-def my_matrix_rank(A, values,  eps=1e-6):
+def my_matrix_rank(A,  eps=1e-6):
 	try:
 		u, s, vh = numpy.linalg.svd(A)
 		return len([x for x in s if abs(x) > eps])
+	
 	except numpy.linalg.LinAlgError:
 		print "SVD did not converge...making a conservative estimate for rank"
-		return column_totals(A, values) 
+		a,b = A.shape
+		return min(a, column_totals(A))
 
 # generates the output file names inside the user provided directory
 def generate_filenames(dir_name, label_lists):

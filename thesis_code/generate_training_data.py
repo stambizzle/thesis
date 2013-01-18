@@ -390,6 +390,12 @@ def get_poly_dim(mat, values):
 	dim = my_matrix_rank(g, values)
 	return dim
 
+def zero_vector_present(records):
+	for record in records:
+		if not record['feature_vector']:
+			return True
+	return False
+
 # determines the overlap of the class represented polytopes
 def affine_hull_intersection(examples1, examples2, values):
 	setminus = 0
