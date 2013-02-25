@@ -21,3 +21,7 @@ For example, consider a training data set that has the labels {\em pos} and {\em
 
 
 The output of the algorithm is a list of suggested feature sets that have the structural characteristics associated with optimal feature sets. Remember, an optimal subset need not be unique. The algorithm gives the user a list of subsets to chose from, based on the user's own criteria.
+
+You can run the program with the included example training vectors with the command line:
+
+python general_feature_selection.py -f 'og_training.txt' -t 1:25,26:48,49:260,261:269,270:645 -l '+,-,!,=' -d 'optimal_feature_sets'
